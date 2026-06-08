@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.campus.lostfound.mapper.ClaimRecordMapper">
+    <resultMap id="ClaimRecordMap" type="ClaimRecord">
+        <id property="id" column="id"/>
+        <result property="itemId" column="item_id"/>
+        <result property="itemName" column="item_name"/>
+        <result property="claimer" column="claimer"/>
+        <result property="contact" column="contact"/>
+        <result property="claimTime" column="claim_time"/>
+        <result property="operator" column="operator"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="ClaimRecord">
+        INSERT INTO claim_record (id, item_id, claimer, contact, claim_time, operator)
+        VALUES (#{id}, #{itemId}, #{claimer}, #{contact}, #{claimTime}, #{operator})
+    </insert>
+
+    <delete id="deleteByItemId">
+        DELETE FROM claim_record
+        WHERE item_id = #{itemId}
+    </delete>
+
+    <select id="findByItemId" resultMap="ClaimRecordMap">
+        SELECT cr.id, cr.item_id, li.name AS item_name, cr.claimer, cr.contact,
+               cr.claim_time, cr.operator
+        FROM claim_record cr
+        LEFT JOIN lost_item li ON li.id = cr.item_id
+        WHERE cr.item_id = #{itemId}
+        ORDER BY cr.claim_time DESC
+    </select>
+</mapper>
