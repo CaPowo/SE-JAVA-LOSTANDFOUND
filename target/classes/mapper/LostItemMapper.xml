@@ -6,6 +6,7 @@
     <resultMap id="LostItemMap" type="LostItem">
         <id property="id" column="id"/>
         <result property="name" column="name"/>
+        <result property="categoryId" column="category_id"/>
         <result property="category" column="category"/>
         <result property="location" column="location"/>
         <result property="foundTime" column="found_time"/>
@@ -20,8 +21,10 @@
     </resultMap>
 
     <sql id="Columns">
-        id, name, category, location, found_time, finder_contact, description,
-        image_path, status, claimer, claim_time, created_at, updated_at
+        li.id, li.name, lic.category_id,
+        COALESCE(c.name, li.category) AS category,
+        li.location, li.found_time, li.finder_contact, li.description,
+        li.image_path, li.status, li.claimer, li.claim_time, li.created_at, li.updated_at
     </sql>
 
     <insert id="insert" parameterType="LostItem">
@@ -68,27 +71,61 @@
 
     <select id="findById" resultMap="LostItemMap">
         SELECT <include refid="Columns"/>
-        FROM lost_item
-        WHERE id = #{id}
+        FROM lost_item li
+        LEFT JOIN lost_item_category lic ON lic.item_id = li.id
+        LEFT JOIN category c ON c.id = lic.category_id
+        WHERE li.id = #{id}
     </select>
 
     <select id="query" resultMap="LostItemMap">
         SELECT <include refid="Columns"/>
-        FROM lost_item
+        FROM lost_item li
+        LEFT JOIN lost_item_category lic ON lic.item_id = li.id
+        LEFT JOIN category c ON c.id = lic.category_id
         <where>
-            <if test="name != null and name != ''">
-                AND name LIKE '%' || #{name} || '%'
+            <if test="keyword != null and keyword != ''">
+                AND (
+                    li.id LIKE '%' || #{keyword} || '%'
+                    OR li.name LIKE '%' || #{keyword} || '%'
+                    OR COALESCE(c.name, li.category) LIKE '%' || #{keyword} || '%'
+                    OR li.location LIKE '%' || #{keyword} || '%'
+                    OR li.found_time LIKE '%' || #{keyword} || '%'
+                    OR li.finder_contact LIKE '%' || #{keyword} || '%'
+                    OR li.description LIKE '%' || #{keyword} || '%'
+                    OR li.image_path LIKE '%' || #{keyword} || '%'
+                    OR li.status LIKE '%' || #{keyword} || '%'
+                    OR CASE li.status
+                        WHEN 'PENDING' THEN '待认领'
+                        WHEN 'CLAIMED' THEN '已认领'
+                        WHEN 'TRANSFERRED' THEN '已移交'
+                        ELSE li.status
+                       END LIKE '%' || #{keyword} || '%'
+                    OR li.claimer LIKE '%' || #{keyword} || '%'
+                    OR li.claim_time LIKE '%' || #{keyword} || '%'
+                    OR EXISTS (
+                        SELECT 1
+                        FROM claim_record cr
+                        WHERE cr.item_id = li.id
+                          AND (
+                              cr.id LIKE '%' || #{keyword} || '%'
+                              OR cr.claimer LIKE '%' || #{keyword} || '%'
+                              OR cr.contact LIKE '%' || #{keyword} || '%'
+                              OR cr.claim_time LIKE '%' || #{keyword} || '%'
+                              OR cr.operator LIKE '%' || #{keyword} || '%'
+                          )
+                    )
+                )
             </if>
             <if test="category != null and category != ''">
-                AND category LIKE '%' || #{category} || '%'
+                AND (c.name LIKE '%' || #{category} || '%' OR li.category LIKE '%' || #{category} || '%')
             </if>
             <if test="location != null and location != ''">
-                AND location LIKE '%' || #{location} || '%'
+                AND li.location LIKE '%' || #{location} || '%'
             </if>
             <if test="status != null">
-                AND status = #{status}
+                AND li.status = #{status}
             </if>
         </where>
-        ORDER BY created_at DESC, updated_at DESC
+        ORDER BY li.created_at DESC, li.updated_at DESC
     </select>
 </mapper>

@@ -23,6 +23,13 @@
         WHERE username = #{username}
     </select>
 
+    <update id="updatePassword">
+        UPDATE user
+        SET password_hash = #{passwordHash},
+            salt = #{salt}
+        WHERE id = #{id}
+    </update>
+
     <select id="countAll" resultType="int">
         SELECT COUNT(*) FROM user
     </select>

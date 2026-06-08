@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.campus.lostfound.mapper.CategoryMapper">
+    <resultMap id="CategoryMap" type="Category">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="Category">
+        INSERT INTO category (id, name, created_at)
+        VALUES (#{id}, #{name}, #{createdAt})
+    </insert>
+
+    <insert id="linkItemCategory">
+        INSERT OR REPLACE INTO lost_item_category (item_id, category_id)
+        VALUES (#{itemId}, #{categoryId})
+    </insert>
+
+    <delete id="unlinkItem">
+        DELETE FROM lost_item_category
+        WHERE item_id = #{itemId}
+    </delete>
+
+    <select id="findAll" resultMap="CategoryMap">
+        SELECT id, name, created_at
+        FROM category
+        ORDER BY name
+    </select>
+
+    <select id="findById" resultMap="CategoryMap">
+        SELECT id, name, created_at
+        FROM category
+        WHERE id = #{id}
+    </select>
+
+    <select id="findByName" resultMap="CategoryMap">
+        SELECT id, name, created_at
+        FROM category
+        WHERE name = #{name}
+    </select>
+</mapper>

@@ -21,7 +21,7 @@ public interface LostItemMapper {
 
     LostItem findById(@Param("id") String id);
 
-    List<LostItem> query(@Param("name") String name,
+    List<LostItem> query(@Param("keyword") String keyword,
                          @Param("category") String category,
                          @Param("location") String location,
                          @Param("status") ItemStatus status);

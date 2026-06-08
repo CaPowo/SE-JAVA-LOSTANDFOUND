@@ -25,5 +25,6 @@
         <mapper resource="mapper/LostItemMapper.xml"/>
         <mapper resource="mapper/UserMapper.xml"/>
         <mapper resource="mapper/ClaimRecordMapper.xml"/>
+        <mapper resource="mapper/CategoryMapper.xml"/>
     </mappers>
 </configuration>

@@ -1,9 +1,11 @@
 package com.campus.lostfound.ui;
 
+import com.campus.lostfound.model.Category;
 import com.campus.lostfound.model.ClaimRecord;
 import com.campus.lostfound.model.ItemStatus;
 import com.campus.lostfound.model.LostItem;
 import com.campus.lostfound.service.LostFoundService;
+import com.campus.lostfound.service.UserService;
 import com.campus.lostfound.util.ImageStorage;
 
 import javafx.collections.FXCollections;
@@ -14,16 +16,21 @@ import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.DatePicker;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
+import javafx.scene.control.PasswordField;
+import javafx.scene.control.Spinner;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+import javafx.scene.control.TextInputDialog;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.ColumnConstraints;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -33,8 +40,10 @@ import javafx.stage.FileChooser;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Optional;
 
@@ -47,21 +56,27 @@ public class MainView extends BorderPane {
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private final LostFoundService service = new LostFoundService();
+    private final UserService userService = new UserService();
     private final String operator;
     private final ObservableList<LostItem> data = FXCollections.observableArrayList();
+    private final ObservableList<Category> categories = FXCollections.observableArrayList();
+    private final ObservableList<Category> searchCategories = FXCollections.observableArrayList();
     private final TableView<LostItem> table = new TableView<>();
 
     // 查询条件控件
-    private final TextField searchName = new TextField();
-    private final TextField searchCategory = new TextField();
+    private final TextField searchKeyword = new TextField();
+    private final ComboBox<Category> searchCategory = new ComboBox<>();
     private final TextField searchLocation = new TextField();
     private final ComboBox<String> searchStatus = new ComboBox<>();
 
     // 录入/编辑表单控件
     private final TextField fName = new TextField();
-    private final TextField fCategory = new TextField();
+    private final ComboBox<Category> fCategory = new ComboBox<>();
     private final TextField fLocation = new TextField();
-    private final TextField fFoundTime = new TextField();
+    private final DatePicker fFoundDate = new DatePicker();
+    private final Spinner<Integer> fFoundHour = new Spinner<>(0, 23, 0);
+    private final Spinner<Integer> fFoundMinute = new Spinner<>(0, 59, 0);
+    private final Spinner<Integer> fFoundSecond = new Spinner<>(0, 59, 0);
     private final TextField fFinderContact = new TextField();
     private final TextArea fDescription = new TextArea();
     private final ComboBox<ItemStatus> fStatus = new ComboBox<>();
@@ -81,6 +96,7 @@ public class MainView extends BorderPane {
         setTop(buildSearchBar());
         setCenter(buildTable());
         setRight(buildForm());
+        reloadCategories();
         reload();
     }
 
@@ -91,8 +107,9 @@ public class MainView extends BorderPane {
     // ---------------- 顶部查询栏 ----------------
 
     private HBox buildSearchBar() {
-        searchName.setPromptText("名称");
-        searchCategory.setPromptText("类别");
+        searchKeyword.setPromptText("名称/电话/UUID/描述");
+        searchCategory.setPromptText("全部");
+        searchCategory.setItems(searchCategories);
         searchLocation.setPromptText("地点");
         searchStatus.getItems().add("全部");
         for (ItemStatus s : ItemStatus.values()) {
@@ -104,19 +121,21 @@ public class MainView extends BorderPane {
         queryBtn.setOnAction(e -> doQuery());
         Button resetBtn = new Button("重置");
         resetBtn.setOnAction(e -> {
-            searchName.clear();
-            searchCategory.clear();
+            searchKeyword.clear();
+            searchCategory.getSelectionModel().selectFirst();
             searchLocation.clear();
             searchStatus.getSelectionModel().selectFirst();
             reload();
         });
+        Button changePasswordBtn = new Button("修改密码");
+        changePasswordBtn.setOnAction(e -> changePassword());
 
         HBox box = new HBox(8,
-                new Label("名称:"), searchName,
+                new Label("关键词:"), searchKeyword,
                 new Label("类别:"), searchCategory,
                 new Label("地点:"), searchLocation,
                 new Label("状态:"), searchStatus,
-                queryBtn, resetBtn);
+                queryBtn, resetBtn, changePasswordBtn);
         box.setAlignment(Pos.CENTER_LEFT);
         box.setPadding(new Insets(0, 0, 10, 0));
         return box;
@@ -161,8 +180,11 @@ public class MainView extends BorderPane {
     private VBox buildForm() {
         fDescription.setPrefRowCount(3);
         fDescription.setWrapText(true);
+        fCategory.setItems(categories);
+        fCategory.setPromptText("选择类别");
         fStatus.getItems().addAll(ItemStatus.values());
         fStatus.getSelectionModel().select(ItemStatus.PENDING);
+        configureTimeControls();
 
         imagePreview.setFitWidth(240);
         imagePreview.setFitHeight(150);
@@ -177,28 +199,46 @@ public class MainView extends BorderPane {
         clearImageBtn.setOnAction(e -> clearImage());
         HBox imageButtons = new HBox(8, chooseImageBtn, clearImageBtn);
         VBox imageBox = new VBox(6, imagePreview, imageHint, imageButtons);
+        Button addCategoryBtn = new Button("新增");
+        addCategoryBtn.setOnAction(e -> addCategory());
+        HBox categoryBox = new HBox(8, fCategory, addCategoryBtn);
+        HBox.setHgrow(fCategory, Priority.ALWAYS);
+        HBox timeParts = new HBox(8,
+                timePart(fFoundHour, "时"),
+                timePart(fFoundMinute, "分"),
+                timePart(fFoundSecond, "秒"));
+        VBox timeBox = new VBox(6, fFoundDate, timeParts);
+        fFoundDate.setMaxWidth(Double.MAX_VALUE);
+        VBox.setVgrow(fFoundDate, Priority.NEVER);
 
         GridPane grid = new GridPane();
         grid.setHgap(8);
         grid.setVgap(8);
+        ColumnConstraints labelColumn = new ColumnConstraints();
+        labelColumn.setMinWidth(92);
+        labelColumn.setPrefWidth(92);
+        labelColumn.setMaxWidth(92);
+        ColumnConstraints inputColumn = new ColumnConstraints();
+        inputColumn.setHgrow(Priority.ALWAYS);
+        inputColumn.setFillWidth(true);
+        grid.getColumnConstraints().addAll(labelColumn, inputColumn);
         int r = 0;
-        grid.addRow(r++, new Label("物品名称*:"), fName);
-        grid.addRow(r++, new Label("类  别:"), fCategory);
-        grid.addRow(r++, new Label("拾取地点:"), fLocation);
-        grid.addRow(r++, new Label("拾取时间:"), fFoundTime);
-        grid.addRow(r++, new Label("拾取人/联系:"), fFinderContact);
-        grid.addRow(r++, new Label("当前状态:"), fStatus);
-        grid.add(new Label("物品描述:"), 0, r);
+        grid.addRow(r++, formLabel("物品名称*:"), fName);
+        grid.addRow(r++, formLabel("类  别:"), categoryBox);
+        grid.addRow(r++, formLabel("拾取地点:"), fLocation);
+        grid.addRow(r++, formLabel("拾取时间:"), timeBox);
+        grid.addRow(r++, formLabel("拾取人/联系:"), fFinderContact);
+        grid.addRow(r++, formLabel("当前状态:"), fStatus);
+        grid.add(formLabel("物品描述:"), 0, r);
         grid.add(fDescription, 1, r++);
-        grid.add(new Label("图片预览:"), 0, r);
+        grid.add(formLabel("图片预览:"), 0, r);
         grid.add(imageBox, 1, r);
 
         for (TextField field : new TextField[]{
-                fName, fCategory, fLocation, fFoundTime, fFinderContact
+                fName, fLocation, fFinderContact
         }) {
             GridPane.setHgrow(field, Priority.ALWAYS);
         }
-        fFoundTime.setPromptText("yyyy-MM-dd HH:mm:ss");
 
         Button addBtn = new Button("新增");
         addBtn.setOnAction(e -> onAdd());
@@ -228,6 +268,34 @@ public class MainView extends BorderPane {
         return box;
     }
 
+    private Label formLabel(String text) {
+        Label label = new Label(text);
+        label.setMinWidth(92);
+        label.setPrefWidth(92);
+        label.setAlignment(Pos.CENTER_RIGHT);
+        return label;
+    }
+
+    private HBox timePart(Spinner<Integer> spinner, String unit) {
+        spinner.setEditable(true);
+        spinner.setMinWidth(72);
+        spinner.setPrefWidth(72);
+        Label label = new Label(unit);
+        label.setMinWidth(18);
+        return new HBox(4, spinner, label);
+    }
+
+    private void configureTimeControls() {
+        fFoundDate.setPromptText("选择日期");
+        configureSpinner(fFoundHour);
+        configureSpinner(fFoundMinute);
+        configureSpinner(fFoundSecond);
+    }
+
+    private void configureSpinner(Spinner<Integer> spinner) {
+        spinner.setEditable(true);
+    }
+
     // ---------------- 业务逻辑 ----------------
 
     /** 加载全部数据。 */
@@ -240,14 +308,95 @@ public class MainView extends BorderPane {
         }
     }
 
+    /** 加载类别下拉数据。 */
+    private void reloadCategories() {
+        try {
+            List<Category> list = service.findCategories();
+            categories.setAll(list);
+
+            Category all = new Category();
+            all.setId("");
+            all.setName("全部");
+            searchCategories.setAll(all);
+            searchCategories.addAll(list);
+            searchCategory.getSelectionModel().selectFirst();
+        } catch (RuntimeException e) {
+            error("加载类别失败", e);
+        }
+    }
+
+    /** 新增类别并刷新下拉框。 */
+    private void addCategory() {
+        TextInputDialog dialog = new TextInputDialog();
+        dialog.setTitle("新增类别");
+        dialog.setHeaderText(null);
+        dialog.setContentText("类别名称:");
+        Optional<String> result = dialog.showAndWait();
+        if (result.isEmpty()) {
+            return;
+        }
+        String name = result.get() == null ? "" : result.get().trim();
+        if (name.isEmpty()) {
+            warn("类别名称不能为空。");
+            return;
+        }
+        try {
+            Category category = service.createCategory(name);
+            reloadCategories();
+            selectCategory(fCategory, category.getId(), category.getName());
+            info("类别已保存。");
+        } catch (RuntimeException e) {
+            error("新增类别失败", e);
+        }
+    }
+
+    /** 长期修改管理员密码:必须校验当前密码。 */
+    private void changePassword() {
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("修改密码");
+        dialog.setHeaderText("当前用户:" + operator);
+
+        PasswordField currentPwd = new PasswordField();
+        currentPwd.setPromptText("当前密码");
+        PasswordField newPwd = new PasswordField();
+        newPwd.setPromptText("新密码,至少 6 位");
+        PasswordField confirmPwd = new PasswordField();
+        confirmPwd.setPromptText("再次输入新密码");
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(12);
+        grid.addRow(0, new Label("当前密码:"), currentPwd);
+        grid.addRow(1, new Label("新密码:"), newPwd);
+        grid.addRow(2, new Label("确认密码:"), confirmPwd);
+        dialog.getDialogPane().setContent(grid);
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        Optional<ButtonType> result = dialog.showAndWait();
+        if (result.isEmpty() || result.get() != ButtonType.OK) {
+            return;
+        }
+        if (!newPwd.getText().equals(confirmPwd.getText())) {
+            warn("两次输入的新密码不一致。");
+            return;
+        }
+        try {
+            userService.changePassword(operator, currentPwd.getText(), newPwd.getText());
+            info("密码修改成功。");
+        } catch (RuntimeException e) {
+            warn(e.getMessage());
+        }
+    }
+
     /** 按查询条件筛选。 */
     private void doQuery() {
         try {
             String statusText = searchStatus.getValue();
             ItemStatus status = (statusText == null || "全部".equals(statusText))
                     ? null : ItemStatus.fromLabel(statusText);
+            Category category = searchCategory.getSelectionModel().getSelectedItem();
             List<LostItem> list = service.query(
-                    searchName.getText(), searchCategory.getText(),
+                    searchKeyword.getText(), category == null ? null : category.getName(),
                     searchLocation.getText(), status);
             data.setAll(list);
         } catch (RuntimeException e) {
@@ -459,9 +608,9 @@ public class MainView extends BorderPane {
         selectedImageSource = null;
         currentImagePath = item.getImagePath();
         fName.setText(item.getName());
-        fCategory.setText(item.getCategory());
+        selectCategory(fCategory, item.getCategoryId(), item.getCategory());
         fLocation.setText(item.getLocation());
-        fFoundTime.setText(item.getFoundTime());
+        setFoundTime(item.getFoundTime());
         fFinderContact.setText(item.getFinderContact());
         fDescription.setText(item.getDescription());
         fStatus.getSelectionModel().select(item.getStatus());
@@ -470,9 +619,11 @@ public class MainView extends BorderPane {
 
     private void readForm(LostItem item) {
         item.setName(fName.getText().trim());
-        item.setCategory(fCategory.getText().trim());
+        Category category = fCategory.getSelectionModel().getSelectedItem();
+        item.setCategoryId(category == null ? "" : category.getId());
+        item.setCategory(category == null ? "" : category.getName());
         item.setLocation(fLocation.getText().trim());
-        item.setFoundTime(fFoundTime.getText().trim());
+        item.setFoundTime(formatFoundTime());
         item.setFinderContact(fFinderContact.getText().trim());
         item.setDescription(fDescription.getText().trim());
         item.setStatus(fStatus.getValue());
@@ -484,9 +635,9 @@ public class MainView extends BorderPane {
         selectedImageSource = null;
         currentImagePath = "";
         fName.clear();
-        fCategory.clear();
+        fCategory.getSelectionModel().clearSelection();
         fLocation.clear();
-        fFoundTime.clear();
+        clearFoundTime();
         fFinderContact.clear();
         fDescription.clear();
         fStatus.getSelectionModel().select(ItemStatus.PENDING);
@@ -495,13 +646,60 @@ public class MainView extends BorderPane {
         table.getSelectionModel().clearSelection();
     }
 
+    private void selectCategory(ComboBox<Category> comboBox, String categoryId, String categoryName) {
+        for (Category category : comboBox.getItems()) {
+            boolean idMatches = !isBlank(categoryId) && categoryId.equals(category.getId());
+            boolean nameMatches = !isBlank(categoryName) && categoryName.equals(category.getName());
+            if (idMatches || nameMatches) {
+                comboBox.getSelectionModel().select(category);
+                return;
+            }
+        }
+        comboBox.getSelectionModel().clearSelection();
+    }
+
+    private String formatFoundTime() {
+        LocalDate date = fFoundDate.getValue();
+        if (date == null) {
+            return "";
+        }
+        LocalDateTime time = date.atTime(
+                fFoundHour.getValue(),
+                fFoundMinute.getValue(),
+                fFoundSecond.getValue());
+        return time.format(TIME_FMT);
+    }
+
+    private void setFoundTime(String text) {
+        if (isBlank(text)) {
+            clearFoundTime();
+            return;
+        }
+        try {
+            LocalDateTime time = LocalDateTime.parse(text, TIME_FMT);
+            fFoundDate.setValue(time.toLocalDate());
+            fFoundHour.getValueFactory().setValue(time.getHour());
+            fFoundMinute.getValueFactory().setValue(time.getMinute());
+            fFoundSecond.getValueFactory().setValue(time.getSecond());
+        } catch (DateTimeParseException e) {
+            clearFoundTime();
+        }
+    }
+
+    private void clearFoundTime() {
+        fFoundDate.setValue(null);
+        fFoundHour.getValueFactory().setValue(0);
+        fFoundMinute.getValueFactory().setValue(0);
+        fFoundSecond.getValueFactory().setValue(0);
+    }
+
     /** 输入合法性校验。 */
     private boolean validate() {
         if (fName.getText() == null || fName.getText().trim().isEmpty()) {
             warn("物品名称不能为空。");
             return false;
         }
-        String time = fFoundTime.getText().trim();
+        String time = formatFoundTime();
         if (!time.isEmpty() && !isValidTime(time)) {
             warn("拾取时间格式应为 yyyy-MM-dd HH:mm:ss。");
             return false;

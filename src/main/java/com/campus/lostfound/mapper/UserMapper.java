@@ -9,5 +9,9 @@ public interface UserMapper {
 
     User findByUsername(@Param("username") String username);
 
+    int updatePassword(@Param("id") String id,
+                       @Param("passwordHash") String passwordHash,
+                       @Param("salt") String salt);
+
     int countAll();
 }

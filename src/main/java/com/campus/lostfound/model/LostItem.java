@@ -12,6 +12,7 @@ public class LostItem {
 
     private final StringProperty id = new SimpleStringProperty(this, "id", "");
     private final StringProperty name = new SimpleStringProperty(this, "name", "");
+    private final StringProperty categoryId = new SimpleStringProperty(this, "categoryId", "");
     private final StringProperty category = new SimpleStringProperty(this, "category", "");
     private final StringProperty location = new SimpleStringProperty(this, "location", "");
     private final StringProperty foundTime = new SimpleStringProperty(this, "foundTime", "");
@@ -37,6 +38,11 @@ public class LostItem {
     public String getName() { return name.get(); }
     public void setName(String value) { name.set(value); }
     public StringProperty nameProperty() { return name; }
+
+    // ---- 类别 ID ----
+    public String getCategoryId() { return categoryId.get(); }
+    public void setCategoryId(String value) { categoryId.set(value); }
+    public StringProperty categoryIdProperty() { return categoryId; }
 
     // ---- 类别 ----
     public String getCategory() { return category.get(); }

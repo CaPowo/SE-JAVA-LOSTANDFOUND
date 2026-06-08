@@ -1,9 +1,11 @@
 C:\Users\15589\Desktop\LostAndFound\src\main\java\com\campus\lostfound\App.java
 C:\Users\15589\Desktop\LostAndFound\src\main\java\com\campus\lostfound\db\Database.java
 C:\Users\15589\Desktop\LostAndFound\src\main\java\com\campus\lostfound\Launcher.java
+C:\Users\15589\Desktop\LostAndFound\src\main\java\com\campus\lostfound\mapper\CategoryMapper.java
 C:\Users\15589\Desktop\LostAndFound\src\main\java\com\campus\lostfound\mapper\ClaimRecordMapper.java
 C:\Users\15589\Desktop\LostAndFound\src\main\java\com\campus\lostfound\mapper\LostItemMapper.java
 C:\Users\15589\Desktop\LostAndFound\src\main\java\com\campus\lostfound\mapper\UserMapper.java
+C:\Users\15589\Desktop\LostAndFound\src\main\java\com\campus\lostfound\model\Category.java
 C:\Users\15589\Desktop\LostAndFound\src\main\java\com\campus\lostfound\model\ClaimRecord.java
 C:\Users\15589\Desktop\LostAndFound\src\main\java\com\campus\lostfound\model\ItemStatus.java
 C:\Users\15589\Desktop\LostAndFound\src\main\java\com\campus\lostfound\model\LostItem.java

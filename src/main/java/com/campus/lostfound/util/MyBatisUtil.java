@@ -70,6 +70,7 @@ public final class MyBatisUtil {
                     } else {
                         executeSchema(conn);
                     }
+                    migrateCategoryLinks(conn);
                     conn.commit();
                 } catch (SQLException | IOException e) {
                     conn.rollback();
@@ -171,6 +172,66 @@ public final class MyBatisUtil {
                     insertClaim.executeUpdate();
                 }
             }
+        }
+    }
+
+    private static void migrateCategoryLinks(Connection conn) throws SQLException {
+        if (!tableExists(conn, "lost_item")
+                || !tableExists(conn, "category")
+                || !tableExists(conn, "lost_item_category")
+                || !columnNames(conn, "lost_item").contains("category")) {
+            return;
+        }
+
+        String selectSql = """
+                SELECT id, category
+                FROM lost_item
+                WHERE category IS NOT NULL AND TRIM(category) <> ''
+                """;
+        try (Statement select = conn.createStatement();
+             ResultSet rs = select.executeQuery(selectSql)) {
+            while (rs.next()) {
+                String itemId = rs.getString("id");
+                String categoryName = rs.getString("category");
+                String categoryId = ensureCategory(conn, categoryName);
+                linkCategory(conn, itemId, categoryId);
+            }
+        }
+    }
+
+    private static String ensureCategory(Connection conn, String name) throws SQLException {
+        String trimmed = name == null ? "" : name.trim();
+        String selectSql = "SELECT id FROM category WHERE name = ?";
+        try (PreparedStatement ps = conn.prepareStatement(selectSql)) {
+            ps.setString(1, trimmed);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getString("id");
+                }
+            }
+        }
+
+        String id = UUID.randomUUID().toString();
+        String insertSql = "INSERT INTO category (id, name, created_at) VALUES (?, ?, ?)";
+        try (PreparedStatement ps = conn.prepareStatement(insertSql)) {
+            ps.setString(1, id);
+            ps.setString(2, trimmed);
+            ps.setString(3, LocalDateTime.now().format(TIME_FMT));
+            ps.executeUpdate();
+        }
+        return id;
+    }
+
+    private static void linkCategory(Connection conn, String itemId, String categoryId)
+            throws SQLException {
+        String sql = """
+                INSERT OR IGNORE INTO lost_item_category (item_id, category_id)
+                VALUES (?, ?)
+                """;
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, itemId);
+            ps.setString(2, categoryId);
+            ps.executeUpdate();
         }
     }
 
