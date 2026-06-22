@@ -199,9 +199,9 @@ public class MainView extends BorderPane {
         clearImageBtn.setOnAction(e -> clearImage());
         HBox imageButtons = new HBox(8, chooseImageBtn, clearImageBtn);
         VBox imageBox = new VBox(6, imagePreview, imageHint, imageButtons);
-        Button addCategoryBtn = new Button("新增");
-        addCategoryBtn.setOnAction(e -> addCategory());
-        HBox categoryBox = new HBox(8, fCategory, addCategoryBtn);
+        Button manageCategoryBtn = new Button("管理");
+        manageCategoryBtn.setOnAction(e -> manageCategories());
+        HBox categoryBox = new HBox(8, fCategory, manageCategoryBtn);
         HBox.setHgrow(fCategory, Priority.ALWAYS);
         HBox timeParts = new HBox(8,
                 timePart(fFoundHour, "时"),
@@ -325,29 +325,102 @@ public class MainView extends BorderPane {
         }
     }
 
-    /** 新增类别并刷新下拉框。 */
-    private void addCategory() {
-        TextInputDialog dialog = new TextInputDialog();
-        dialog.setTitle("新增类别");
+    /** 类别管理:新增、重命名、删除未使用类别。 */
+    private void manageCategories() {
+        TableView<Category> categoryTable = new TableView<>();
+        ObservableList<Category> categoryData =
+                FXCollections.observableArrayList(service.findCategories());
+        categoryTable.setItems(categoryData);
+        categoryTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY);
+        TableColumn<Category, String> nameCol = new TableColumn<>("类别名称");
+        nameCol.setCellValueFactory(new PropertyValueFactory<>("name"));
+        TableColumn<Category, String> createdCol = new TableColumn<>("创建时间");
+        createdCol.setCellValueFactory(new PropertyValueFactory<>("createdAt"));
+        categoryTable.getColumns().add(nameCol);
+        categoryTable.getColumns().add(createdCol);
+        categoryTable.setPrefSize(460, 300);
+
+        Button addBtn = new Button("新增");
+        addBtn.setOnAction(e -> {
+            Optional<String> name = askText("新增类别", "类别名称:", "");
+            name.ifPresent(value -> {
+                try {
+                    service.createCategory(value);
+                    refreshCategoryManagementData(categoryTable, categoryData);
+                    reloadCategories();
+                } catch (RuntimeException ex) {
+                    warn(ex.getMessage());
+                }
+            });
+        });
+
+        Button renameBtn = new Button("重命名");
+        renameBtn.setOnAction(e -> {
+            Category selected = categoryTable.getSelectionModel().getSelectedItem();
+            if (selected == null) {
+                warn("请先选择要重命名的类别。");
+                return;
+            }
+            Optional<String> name = askText("重命名类别", "类别名称:", selected.getName());
+            name.ifPresent(value -> {
+                try {
+                    service.renameCategory(selected.getId(), value);
+                    refreshCategoryManagementData(categoryTable, categoryData);
+                    reloadCategories();
+                } catch (RuntimeException ex) {
+                    warn(ex.getMessage());
+                }
+            });
+        });
+
+        Button deleteBtn = new Button("删除");
+        deleteBtn.setOnAction(e -> {
+            Category selected = categoryTable.getSelectionModel().getSelectedItem();
+            if (selected == null) {
+                warn("请先选择要删除的类别。");
+                return;
+            }
+            Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                    "确定删除类别《" + selected.getName() + "》吗?\n已被失物使用的类别不能删除。");
+            confirm.setHeaderText(null);
+            confirm.setTitle("确认删除类别");
+            Optional<ButtonType> result = confirm.showAndWait();
+            if (result.isEmpty() || result.get() != ButtonType.OK) {
+                return;
+            }
+            try {
+                service.deleteCategory(selected.getId());
+                refreshCategoryManagementData(categoryTable, categoryData);
+                reloadCategories();
+            } catch (RuntimeException ex) {
+                warn(ex.getMessage());
+            }
+        });
+
+        HBox buttons = new HBox(8, addBtn, renameBtn, deleteBtn);
+        VBox content = new VBox(10, categoryTable, buttons);
+
+        Dialog<ButtonType> dialog = new Dialog<>();
+        dialog.setTitle("类别管理");
+        dialog.setHeaderText("维护失物类别");
+        dialog.getDialogPane().setContent(content);
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
+        dialog.showAndWait();
+        reloadCategories();
+    }
+
+    private void refreshCategoryManagementData(TableView<Category> table,
+                                               ObservableList<Category> categoryData) {
+        categoryData.setAll(service.findCategories());
+        table.getSelectionModel().clearSelection();
+    }
+
+    private Optional<String> askText(String title, String label, String defaultValue) {
+        TextInputDialog dialog = new TextInputDialog(defaultValue);
+        dialog.setTitle(title);
         dialog.setHeaderText(null);
-        dialog.setContentText("类别名称:");
-        Optional<String> result = dialog.showAndWait();
-        if (result.isEmpty()) {
-            return;
-        }
-        String name = result.get() == null ? "" : result.get().trim();
-        if (name.isEmpty()) {
-            warn("类别名称不能为空。");
-            return;
-        }
-        try {
-            Category category = service.createCategory(name);
-            reloadCategories();
-            selectCategory(fCategory, category.getId(), category.getName());
-            info("类别已保存。");
-        } catch (RuntimeException e) {
-            error("新增类别失败", e);
-        }
+        dialog.setContentText(label);
+        return dialog.showAndWait().map(String::trim).filter(value -> !value.isEmpty());
     }
 
     /** 长期修改管理员密码:必须校验当前密码。 */
@@ -395,8 +468,10 @@ public class MainView extends BorderPane {
             ItemStatus status = (statusText == null || "全部".equals(statusText))
                     ? null : ItemStatus.fromLabel(statusText);
             Category category = searchCategory.getSelectionModel().getSelectedItem();
+            String categoryName = category == null || isBlank(category.getId())
+                    ? null : category.getName();
             List<LostItem> list = service.query(
-                    searchKeyword.getText(), category == null ? null : category.getName(),
+                    searchKeyword.getText(), categoryName,
                     searchLocation.getText(), status);
             data.setAll(list);
         } catch (RuntimeException e) {

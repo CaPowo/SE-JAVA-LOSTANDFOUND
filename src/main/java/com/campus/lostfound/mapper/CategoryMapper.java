@@ -9,6 +9,11 @@ public interface CategoryMapper {
 
     void insert(Category category);
 
+    int updateName(@Param("id") String id,
+                   @Param("name") String name);
+
+    int delete(@Param("id") String id);
+
     void linkItemCategory(@Param("itemId") String itemId,
                           @Param("categoryId") String categoryId);
 
@@ -19,4 +24,6 @@ public interface CategoryMapper {
     Category findById(@Param("id") String id);
 
     Category findByName(@Param("name") String name);
+
+    int countItemLinks(@Param("id") String id);
 }

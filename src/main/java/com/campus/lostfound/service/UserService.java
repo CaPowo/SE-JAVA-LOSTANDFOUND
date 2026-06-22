@@ -1,10 +1,8 @@
 package com.campus.lostfound.service;
 
-import com.campus.lostfound.mapper.UserMapper;
+import com.campus.lostfound.dao.UserDao;
 import com.campus.lostfound.model.User;
-import com.campus.lostfound.util.MyBatisUtil;
 import com.campus.lostfound.util.PasswordUtil;
-import org.apache.ibatis.session.SqlSession;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -20,21 +18,19 @@ public class UserService {
     private static final DateTimeFormatter TIME_FMT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
+    private final UserDao userDao = new UserDao();
+
     public void initDefaultAdmin() {
-        try (SqlSession session = MyBatisUtil.getSqlSessionFactory().openSession(false)) {
-            UserMapper mapper = session.getMapper(UserMapper.class);
-            if (mapper.countAll() == 0) {
-                String salt = PasswordUtil.generateSalt();
-                User admin = new User();
-                admin.setId(UUID.randomUUID().toString());
-                admin.setUsername("admin");
-                admin.setSalt(salt);
-                admin.setPasswordHash(PasswordUtil.hash(DEFAULT_PASSWORD, salt));
-                admin.setRole("ADMIN");
-                admin.setCreatedAt(now());
-                mapper.insert(admin);
-            }
-            session.commit();
+        if (userDao.countAll() == 0) {
+            String salt = PasswordUtil.generateSalt();
+            User admin = new User();
+            admin.setId(UUID.randomUUID().toString());
+            admin.setUsername("admin");
+            admin.setSalt(salt);
+            admin.setPasswordHash(PasswordUtil.hash(DEFAULT_PASSWORD, salt));
+            admin.setRole("ADMIN");
+            admin.setCreatedAt(now());
+            userDao.insert(admin);
         }
     }
 
@@ -42,12 +38,9 @@ public class UserService {
         if (isBlank(username) || password == null) {
             return false;
         }
-        try (SqlSession session = MyBatisUtil.getSqlSessionFactory().openSession()) {
-            UserMapper mapper = session.getMapper(UserMapper.class);
-            User user = mapper.findByUsername(username.trim());
-            return user != null
-                    && PasswordUtil.verify(password, user.getSalt(), user.getPasswordHash());
-        }
+        User user = userDao.findByUsername(username.trim());
+        return user != null
+                && PasswordUtil.verify(password, user.getSalt(), user.getPasswordHash());
     }
 
     public boolean isDefaultPassword(String password) {
@@ -58,25 +51,21 @@ public class UserService {
         String trimmedUsername = username == null ? "" : username.trim();
         validatePasswordChange(trimmedUsername, currentPassword, newPassword);
 
-        try (SqlSession session = MyBatisUtil.getSqlSessionFactory().openSession(false)) {
-            UserMapper mapper = session.getMapper(UserMapper.class);
-            User user = mapper.findByUsername(trimmedUsername);
-            if (user == null) {
-                throw new IllegalArgumentException("用户不存在");
-            }
-            if (!PasswordUtil.verify(currentPassword, user.getSalt(), user.getPasswordHash())) {
-                throw new IllegalArgumentException("当前密码不正确");
-            }
-            if (PasswordUtil.verify(newPassword, user.getSalt(), user.getPasswordHash())) {
-                throw new IllegalArgumentException("新密码不能和当前密码相同");
-            }
+        User user = userDao.findByUsername(trimmedUsername);
+        if (user == null) {
+            throw new IllegalArgumentException("用户不存在");
+        }
+        if (!PasswordUtil.verify(currentPassword, user.getSalt(), user.getPasswordHash())) {
+            throw new IllegalArgumentException("当前密码不正确");
+        }
+        if (PasswordUtil.verify(newPassword, user.getSalt(), user.getPasswordHash())) {
+            throw new IllegalArgumentException("新密码不能和当前密码相同");
+        }
 
-            String salt = PasswordUtil.generateSalt();
-            int updated = mapper.updatePassword(user.getId(), PasswordUtil.hash(newPassword, salt), salt);
-            if (updated != 1) {
-                throw new IllegalStateException("密码更新失败");
-            }
-            session.commit();
+        String salt = PasswordUtil.generateSalt();
+        int updated = userDao.updatePassword(user.getId(), PasswordUtil.hash(newPassword, salt), salt);
+        if (updated != 1) {
+            throw new IllegalStateException("密码更新失败");
         }
     }
 
